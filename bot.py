@@ -1,125 +1,76 @@
 import os
-from converter import Units
+import inline_keyboards as buttons
+from unit_converter import Converter
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.dispatcher import FSMContext
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from states import MainMenu
-from bot_logger import UserLog
+from state_controller import Database
+from state_controller import States
+from bot_message_sender import BotMessage
+from action_logger import UserLog
+from aiogram.utils.exceptions import MessageToDeleteNotFound
 
 API_TOKEN = os.environ['SUGARFREE_KEY']
+BOT_MESSAGE_ID = 0
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+dp = Dispatcher(bot)
+db = Database()
 
 
 @dp.message_handler(commands=['start'])
-async def show_welcome(message: types.Message, state: FSMContext):
-    user = UserLog(message)
-    user.log_action('start')
-    lets_go = types.InlineKeyboardButton(text="Let's go!", callback_data="to_main")
-    inline_keyboard = types.InlineKeyboardMarkup().add(lets_go)
-    await bot.send_message(message.chat.id, text=f"Hi *{user.user_full_name}*!"
-                                                 f"\n\nI'm *Sugarfree Bot*!"
-                                                 f"\nI'll help you to make your daily life with diabetes easy!",
-                           reply_markup=inline_keyboard,
-                           parse_mode='Markdown')
-    await state.set_state(MainMenu.main_menu)
-    user.log_action('state_main_menu_set')
+async def show_welcome(message: types.Message):
+    inline_keyboard = types.InlineKeyboardMarkup().add(buttons.lets_go)
+    await BotMessage(message, inline_keyboard).send_message_show_welcome()
+    db.set_state(message.from_user.id, States.main_menu)
+    UserLog(message).log_action('Bot started. States main_menu has been set.')
 
 
-@dp.callback_query_handler(text=["to_main"], state="*")
-async def show_welcome(call: types.CallbackQuery):
-    user = UserLog(call)
-    user.log_action('main_menu')
-    convert_button = types.InlineKeyboardButton(text="🧪 Units converter", callback_data="convert")
-    info_button = types.InlineKeyboardButton(text="ℹ Information", callback_data="info")
-    inline_keyboard = types.InlineKeyboardMarkup().add(convert_button, info_button)
+@dp.callback_query_handler(text=["to_main"])
+async def show_main_menu(call: types.CallbackQuery):
+    inline_keyboard = types.InlineKeyboardMarkup().add(*buttons.main_menu_keyboard)
     await call.message.delete()
-    await call.message.answer(text="This is the main menu where you can find a section with tool or information to "
-                                   "help solve your issue."
-                                   "\nChoose the one you want to continue!",
-                              reply_markup=inline_keyboard,
-                              parse_mode='Markdown')
+    await BotMessage(call, inline_keyboard).send_message_main_menu_descr()
+    UserLog(call).log_action('Entered the main menu')
 
 
-@dp.callback_query_handler(text=["convert"], state="*")
-async def choose_units(call: types.CallbackQuery, state: FSMContext):
-    user = UserLog(call)
-    user.log_action('convert_menu')
-    to_mmol = types.InlineKeyboardButton(text="🩸 mmol/l", callback_data="to_mmol")
-    to_mg = types.InlineKeyboardButton(text="🩸 mg/dl", callback_data="to_mg")
-    back = types.InlineKeyboardButton(text="🔙 Back", callback_data="to_main")
-    inline_keyboard_units = types.InlineKeyboardMarkup().add(to_mmol, to_mg, back)
+@dp.callback_query_handler(text=["convert"])
+async def choose_units(call: types.CallbackQuery):
+    inline_keyboard = types.InlineKeyboardMarkup().add(*buttons.choose_units_keyboard)
     await call.message.delete()
-    await call.message.answer("Let's start conversion!"                              
-                              "\n⚠️Currently you have only two options:"
-                              "\n* • mg/dl - mmol/l*"
-                              "\n* • mmol/l - mg/dl*"
-                              "\n\nChoose *target units*.",
-                              reply_markup=inline_keyboard_units,
-                              parse_mode='Markdown')
-    await state.set_state(MainMenu.converting_units)
+    await BotMessage(call, inline_keyboard).send_message_start_conversion()
+    db.set_state(call.from_user.id, States.converting_units)
+    UserLog(call).log_action('State changed to converting_units. User navigated to the unit selection menu.')
 
 
-@dp.callback_query_handler(text=["to_mmol", "to_mg"], state=MainMenu.converting_units)
-async def name_units(call: types.CallbackQuery, state: FSMContext):
-    user = UserLog(call)
-    user.log_action('choose_units')
-    if call.data == "to_mmol":
-        units = 'mg/dl to mmol/l'
-        await state.set_state(MainMenu.converting_units_to_mmol)
-        user.log_action('state_converting_units_to_mmol_set')
-        await call.answer("to_mmol")
-    else:
-        units = 'mmol/l to mg/dl'
-        await state.set_state(MainMenu.converting_units_to_mg)
-        user.log_action('state_converting_units_to_mg_set')
-        await call.answer("to_mg")
-    await call.message.delete()
-    await call.message.answer(f'*Your choice:* {units}'
-                              f'\n\nWrite down your glucometer test results '
-                              'than I\'ll convert it for you!',
-                              parse_mode='Markdown')
+@dp.callback_query_handler(text=["to_mmol", "to_mg"])
+async def name_units(call: types.CallbackQuery):
+    if db.get_state(call.from_user.id) == States.converting_units:
+        if call.data == "to_mmol":
+            db.set_state(call.from_user.id, States.converting_units_to_mmol)
+            UserLog(call).log_action('State changed to converting_units_to_mmol. Ready to receive values.')
+        elif call.data == "to_mg":
+            db.set_state(call.from_user.id, States.converting_units_to_mg)
+            UserLog(call).log_action('State changed to converting_units_to_mg. Ready to receive values.')
+        await call.message.delete()
+        message = await BotMessage(call).send_message_with_defined_units()
+        global BOT_MESSAGE_ID
+        BOT_MESSAGE_ID = message.message_id
 
 
-@dp.message_handler(state=MainMenu.converting_units_to_mmol)
+@dp.message_handler()
 async def get_results(message: types.Message):
-    user = UserLog(message)
-    back = types.InlineKeyboardButton(text="🔙 Change units", callback_data="convert", state=None)
-    inline_keyboard_units = types.InlineKeyboardMarkup().add(back)
-    try:
-        result_1 = Units(int(message.text)).convert_mg_to_mmol()
-        result_1 = round(result_1, 2)
-        await bot.send_message(message.chat.id, f'*Your blood glucose:* {result_1} mmol/l',
-                               parse_mode='Markdown',
-                               reply_markup=inline_keyboard_units)
-    except ValueError:
-        await bot.send_message(message.chat.id, f'Looks like you *made mistake* typing!'
-                                                f'\nWrong number: *{message.text}*'
-                                                f'\nPlease write down again',
-                               parse_mode='Markdown',
-                               reply_markup=inline_keyboard_units)
-    user.log_action('units_converted_to_mmol')
-
-
-@dp.message_handler(state=MainMenu.converting_units_to_mg)
-async def get_results(message: types.Message):
-    user = UserLog(message)
-    back = types.InlineKeyboardButton(text="🔙 Change units", callback_data="convert", state=None)
-    inline_keyboard_units = types.InlineKeyboardMarkup().add(back)
-    try:
-        result_2 = Units(float(message.text)).convert_mmol_to_mg()
-        result_2 = round(result_2, 2)
-        await bot.send_message(message.chat.id, f'*Your blood glucose:* {result_2} mg/dl',
-                               parse_mode='Markdown',
-                               reply_markup=inline_keyboard_units)
-    except ValueError:
-        await bot.send_message(message.chat.id, f'Looks like you *made mistake* typing!'
-                                                f'\nWrong number: *{message.text}*'
-                                                f'\nPlease write down again',
-                               parse_mode='Markdown',
-                               reply_markup=inline_keyboard_units)
-    user.log_action('units_converted_to_mg')
+    current_state = db.get_state(message.from_user.id)
+    if current_state in [States.converting_units_to_mmol,
+                         States.converting_units_to_mg]:
+        try:
+            await bot.delete_message(message.chat.id, BOT_MESSAGE_ID)
+        except MessageToDeleteNotFound:
+            pass
+        inline_keyboard = types.InlineKeyboardMarkup().add(buttons.change_units)
+        try:
+            await Converter(message).make_conversion(current_state, inline_keyboard)
+        except ValueError:
+            await BotMessage(message, inline_keyboard).send_message_mistake_in_glucose_value()
+        UserLog(message).log_action('Unit conversion has occurred.')
 
 
 if __name__ == '__main__':
