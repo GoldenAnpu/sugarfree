@@ -21,6 +21,6 @@ Try it now -
  - <p style="color:Green">Units converter</p>
 
 ### Technical information
- - Wrote with aiogram
+ - Developed using aiogram
  - SQLite as database
  - Deployed on VPS Linode with Ubuntu 22.10
