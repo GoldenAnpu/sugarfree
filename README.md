@@ -1,5 +1,7 @@
 ## SUGARFREE
 
+![pic1](https://lh3.googleusercontent.com/u/1/drive-viewer/AAOQEOTGptNj8aSVao0pbqi10QtWecoNiMkiPXBeimKzuVOZqb4MeAasuDxTU7rjiPrVXtREbCQM4iq6u3CgwENfRqAaG4z8XA=w2560-h1213)
+
 ### Description
 Introducing Sugarfree, the Telegram bot that will help make daily life with diabetes manageable! This bot is designed to help individuals with diabetes take control of their daily lives by providing a variety of useful features and resources.
 
