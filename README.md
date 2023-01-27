@@ -20,7 +20,20 @@ Try it now -
 
 
 ### Released features
- - <p style="color:Green">Units converter</p>
+#### For users
+ - units converter
+
+#### For bot
+ - logging
+
+### What needs to be implemented
+ - add code documentation!
+ - support commands: cancel, info, main_menu, diary, reminder 
+ - add reminder
+ - add diary
+ - add calorie calculator based on results of Google featured snippet
+ - add test coverage
+ - code must be more DRY more KISS more SOLID
 
 ### Technical information
  - Developed using aiogram

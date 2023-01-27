@@ -25,7 +25,7 @@ class BotMessage:
 
     def send_message_start_conversion(self):
         return self.initializer.message.answer("Let's start conversion!"
-                                               "\nCurrently, you only have two options:"
+                                               "\nYou have two options:"
                                                "\n* • mg/dl - mmol/l*"
                                                "\n* • mmol/l - mg/dl*"
                                                "\n\nPlease select *target units*.",
