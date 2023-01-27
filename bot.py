@@ -1,4 +1,5 @@
 import os
+import logging
 import inline_keyboards as buttons
 from unit_converter import Converter
 from aiogram import Bot, Dispatcher, executor, types
@@ -6,7 +7,7 @@ from state_controller import Database
 from state_controller import States
 from bot_message_sender import BotMessage
 from action_logger import UserLog
-from aiogram.utils.exceptions import MessageToDeleteNotFound
+from aiogram.utils.exceptions import MessageToDeleteNotFound, MessageIdentifierNotSpecified
 
 API_TOKEN = os.environ['SUGARFREE_KEY']
 BOT_MESSAGE_ID = 0
@@ -14,6 +15,14 @@ BOT_MESSAGE_ID = 0
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 db = Database()
+
+logger = logging.getLogger("bot_action_logger")
+logger.setLevel(level=logging.DEBUG)
+log_file_formatter = logging.Formatter(f"%(levelname) - 4s %(asctime)s %(message)s ")
+file_handler = logging.FileHandler(filename='bot_action_log.log')
+file_handler.setFormatter(log_file_formatter)
+file_handler.setLevel(level=logging.DEBUG)
+logger.addHandler(file_handler)
 
 
 @dp.message_handler(commands=['start'])
@@ -63,7 +72,7 @@ async def get_results(message: types.Message):
                          States.converting_units_to_mg]:
         try:
             await bot.delete_message(message.chat.id, BOT_MESSAGE_ID)
-        except MessageToDeleteNotFound:
+        except (MessageToDeleteNotFound, MessageIdentifierNotSpecified):
             pass
         inline_keyboard = types.InlineKeyboardMarkup().add(buttons.change_units)
         try:
@@ -71,6 +80,12 @@ async def get_results(message: types.Message):
         except ValueError:
             await BotMessage(message, inline_keyboard).send_message_mistake_in_glucose_value()
         UserLog(message).log_action('Unit conversion has occurred.')
+
+
+@dp.errors_handler()
+async def errors_handler(update, error):
+    user_id = update['message']['from']['id']
+    logger.exception(f'[ID: {user_id}] User action raised error: {error}')
 
 
 if __name__ == '__main__':
